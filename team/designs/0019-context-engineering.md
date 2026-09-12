@@ -195,6 +195,100 @@ agent = Agent(
 )
 ```
 
+**Every knob, in one place.** The examples above show the adoption path, where the defaults carry the
+weight. This one spells out the full surface with each default stated, for review of the parameter set
+itself rather than of the happy path:
+
+```python
+from strands import Agent
+from strands.experimental.context_manager import BedrockReranker, ContextManager, Offload
+from strands.storage import InMemoryStorage
+from strands.vended_plugins.context_graph import ContextStrategy
+from strands.vended_plugins.progressive_tool_disclosure import ProgressiveToolDisclosure
+
+# --- C: the context graph ---------------------------------------------------------
+# Built first, because B takes its referenced_tool_names as an input.
+graph = ContextStrategy(
+    strategy="graph",          # the only accepted value, case-sensitive
+    expand_threshold=0.55,     # note at or above this: Full Content, budget permitting
+    collapse_floor=0.45,       # note below this: Title only
+    description_tokens=100,    # token ceiling of a Description
+    tags_per_card=5,           # how many identifiers define a Card
+    rarity_weight=0.70,        # rarity against repetition when ranking textual Tags
+    body_budget=None,          # token ceiling across Cards at Full Content; None for no ceiling
+    min_cards=3,               # below this many Cards the choice is skipped entirely
+    link_threshold=0.50,       # similarity at or above which two Cards link
+    reuse_ttl_cycles=5,        # model cycles a Fed-Back Note survives
+    matcher=None,              # None: the default asymmetric multilingual embedding
+    recent_cards=None,         # None addresses every Card, leaving selection off. 0 differs from
+                               #   None: it selects by note alone, with no recency window
+    select_top_k=5,            # Cards the note adds beyond the recency window; read only when
+                               #   selection is on
+    reranker=None,             # optional second selection stage, ~10x the embedding latency
+    persist=False,             # True keeps the graph in agent.state: no rebuild scan, at the cost
+                               #   of a second copy of the Descriptions in the store
+    name=None,                 # None: "strands:context-strategy"
+)
+
+# --- A: relevance filtering, a ContextManager offload strategy ---------------------
+relevance = Offload.relevance(
+    # target: "*" | "tool_results" | "tool_result_errors" | "assistant_text" | "user_text",
+    #   or a per-tool list — ["tool::bash", "tool::read_log"] — or an exclusion — ["!tool::read_file"]
+    "tool_results",
+    {
+        "reranker": BedrockReranker(),  # anything with an awaitable score(query, chunks).
+                                        #   Default: BedrockReranker(), built lazily, so
+                                        #   constructing the strategy opens no AWS client
+        "relevance_threshold": 0.5,     # minimum score in [0.0, 1.0] to enter the preview
+        "chunk_tokens": 2500,           # approximate size of each scored chunk: the granularity
+        "preview_tokens": 1000,         # token budget of the whole preview
+        "summarize_overflow": False,    # reserved; accepted and stored, not yet acted upon
+    },
+).when(
+    threshold=2500,      # per-block, which is what registers the base eager hook: each oversized
+                         #   result is rewritten as it enters the conversation, before the next call
+    utilization=None,    # setting this makes the strategy message-level and reactive, and the
+                         #   eager hook is not registered
+    preserve_recent=0,   # int keeps that many recent messages untouched, float a ratio. Any value
+                         #   above 0 also suppresses the eager hook
+)
+
+agent = Agent(
+    tools=[...],
+    context_manager=ContextManager(
+        strategies=[relevance],   # ordered pipeline; also accepts preset names as strings
+                                  #   ("proactive_summarization", "large_tool_offloading",
+                                  #    "overflow_protection", "stale_tool_cleanup").
+                                  #   An emergency truncation is always appended last
+        stash={
+            "storage": InMemoryStorage(),  # defaults to InMemoryStorage, or agent.storage if set
+            "retrieval_tool": True,        # registers retrieve_context. Defaults to True
+        },
+        # stash=False disables both, which also leaves the graph's expand_artifact nothing to read
+    ),
+    plugins=[
+        graph,
+        # --- B: progressive tool disclosure ---------------------------------------
+        ProgressiveToolDisclosure(
+            catalog_tokens=20,      # description budget of a catalog entry. None drops the catalog
+                                    #   entirely (~200 resident tokens): the cheapest configuration
+                                    #   and the one with the least to go on, since with no name to
+                                    #   recognize the model may answer from what it knows
+            ttl_cycles=5,           # cycles an exposure survives after its last use
+            always_available=["retrieve_context"],
+                                    # full specification on every call, skipping discovery. Defaults
+                                    #   to (), and the relevance marker tells the model to call
+                                    #   retrieve_context — so without this it spends a cycle finding it
+            index=None,             # None: LexicalToolIndex, which needs no network
+            top_k=3,                # how many tools one search exposes
+            referenced_source=graph.referenced_tool_names,
+                                    # names the graph's surviving Cards still mention. None composes
+                                    #   the referenced set from the retained history alone
+        ),
+    ],
+)
+```
+
 **Errors and edge cases.** Every strategy degrades to today's behavior and logs once: a reranker failure leaves the block as it was; an embedding failure sends the full history that turn; a `find_tools` miss returns guidance to rephrase. The graph pairs with `NullConversationManager` and warns (once, non-blocking) if a destructive manager is installed alongside it, because a manager that removes messages can drop what the graph only meant to fold.
 
 ## Consequences
