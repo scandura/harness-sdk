@@ -15,7 +15,8 @@ not one:
   ``[0.0, 1.0]`` because ``relevance_threshold`` reads it absolutely. It is the only one of the
   three that *must* raise instead of degrading, which is why
   :meth:`~BedrockReranker.score` refuses to clamp an out-of-range score: a wrong score here
-  drops the passage the question needed, and a wrong answer is worse than a positional preview.
+  drops the passage the question needed, and a wrong answer is worse than leaving the block
+  as it was.
 - :class:`~strands.vended_plugins.progressive_tool_disclosure.index.ToolIndex` has a build
   phase, because tool specifications are static, and its scores carry no absolute meaning
   since selection is ``top_k``.
@@ -59,8 +60,8 @@ class RerankerError(Exception):
     """Raised when relevance scoring is unavailable or its result is unusable.
 
     This is the only exception type a :class:`Reranker` implementation is
-    allowed to raise from :meth:`Reranker.score`. Callers treat it as a signal
-    to fall back to the positional preview, never as a fatal error.
+    allowed to raise from :meth:`Reranker.score`. The relevance strategy treats
+    it as a signal to leave the block unchanged, never as a fatal error.
     """
 
 

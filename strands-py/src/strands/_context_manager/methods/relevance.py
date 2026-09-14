@@ -185,7 +185,7 @@ def _validate_scores(scores: object, chunk_count: int) -> list[float]:
     silently corrupt the selection: a wrong length misaligns scores from chunks, and a
     value outside ``[0.0, 1.0]`` breaks the threshold comparison. Failing here turns
     the violation into the same ``RerankerError`` a transport failure raises, so the
-    caller falls back to the positional preview through a single path.
+    caller leaves the block unchanged through a single path.
 
     Booleans are rejected: ``True`` would pass as ``1.0`` and hide a broken scorer.
 
@@ -454,7 +454,7 @@ class RelevancePreview:
         Raises:
             RerankerError: Propagated from the reranker, or raised here when the
                 returned score list violates the scoring contract. Either way the
-                caller falls back to the positional preview through one path, and
+                caller leaves the block unchanged through one path, and
                 ``text`` is left untouched.
         """
         budget_chars = self._preview_tokens * _CHARS_PER_TOKEN
