@@ -55,6 +55,15 @@ def _tool_result_text(tool_result: ToolResult) -> str:
     return "\n".join(parts)
 
 
+def _opaque_content(tool_result: ToolResult) -> list[ToolResultContent]:
+    """The tool result's non-textual blocks — images, documents — which the preview cannot carry.
+
+    They are the blocks the preview does not summarize, so dropping them would lose content the
+    text preview never represented. Kept verbatim after the marker, as ``truncate`` does.
+    """
+    return [item for item in tool_result["content"] if "text" not in item and "json" not in item]
+
+
 def _build_query(tool_result: ToolResult, agent: Agent) -> str:
     """Build the scoring query from the latest user question plus the tool call arguments.
 
@@ -165,7 +174,7 @@ class RelevanceStrategy(BaseOffloadStrategy):
 
         logger.debug("tool_use_id=<%s>, tokens=<%s> | relevance-filtered tool result", tool_result["toolUseId"], tokens)
         marker = f"[Relevance: tool result, ~{tokens:,} tokens]\n\n{preview}" + _format_stash_refs(stash_refs)
-        relevant_content: list[ToolResultContent] = [{"text": marker}]
+        relevant_content: list[ToolResultContent] = [{"text": marker}, *_opaque_content(tool_result)]
         return ContentBlock(
             toolResult=ToolResult(
                 toolUseId=tool_result["toolUseId"],

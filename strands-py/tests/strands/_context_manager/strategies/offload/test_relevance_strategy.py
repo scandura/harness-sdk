@@ -110,6 +110,23 @@ class TestRelevanceStrategyPerBlock:
         context = ContextState(messages=messages, agent=mock_agent, utilization=0.4)
         assert await strategy.apply(context) is False
 
+    @pytest.mark.asyncio
+    async def test_media_sub_blocks_survive_the_rewrite(self, mock_agent):
+        # A tool result mixing a large text block with an image the preview cannot represent.
+        image = {"image": {"format": "png", "source": {"bytes": b"\x89PNG"}}}
+        result = "\n".join(["noise"] * 40 + ["the ERROR line"] + ["noise"] * 40)
+        messages = _turn(result)
+        messages[2]["content"][0]["toolResult"]["content"].append(image)
+        mock_agent.messages = messages
+        strategy = _relevance(_KeywordReranker())
+        context = ContextState(messages=messages, agent=mock_agent, utilization=0.4)
+
+        assert await strategy.apply(context) is True
+        new_content = messages[2]["content"][0]["toolResult"]["content"]
+        assert "[Relevance:" in new_content[0]["text"]
+        # The image block is preserved verbatim after the marker rather than dropped.
+        assert image in new_content
+
 
 class TestRelevanceStrategyEager:
     """The threshold config registers the eager hook — proactive cleanup at MessageAddedEvent."""
