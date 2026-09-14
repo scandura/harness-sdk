@@ -14,7 +14,7 @@ Two sibling plugins score text against text as well, and the three protocols are
 - ``ToolIndex`` here is the only one with a *build* phase, because tool specifications are static and
   the work is worth doing once per registry fingerprint. It is also the only one whose scores carry no
   absolute meaning — selection is ``top_k``, so no threshold reads them.
-- :class:`~strands.vended_plugins.context_offloader.reranker.Reranker` is stateless, scores chunks of a
+- :class:`~strands._context_manager.methods.reranker.Reranker` is stateless, scores chunks of a
   single tool result, and must return a true ``[0.0, 1.0]`` because ``relevance_threshold`` compares
   against it. It must raise rather than return a short list, since a missing score would be read as
   "irrelevant" and silently drop the passage the question needed.
